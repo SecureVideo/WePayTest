@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 using System.Web.Hosting;
+using System.Web.WebSockets;
 using WePayTest.Models;
 
 namespace WePayTest
@@ -222,6 +223,7 @@ namespace WePayTest
                         token: {
                             id: ''                      
                             },
+                        rbits: [],
                         credit_card: 
                         {
                             card_on_file : true,
@@ -241,6 +243,8 @@ namespace WePayTest
                 data["credit_card"]["card_holder"]["email"] = payment.EmailAddress;
                 data["credit_card"]["card_holder"]["address"]["country"] = payment.Country;
                 data["credit_card"]["card_holder"]["address"]["postal_code"] = payment.PostalCode;
+               
+
                 msg.Content = new StringContent(data.ToString(), Encoding.UTF8,"application/json");
                 HttpResponseMessage response = await m_wePayHttpClient.SendAsync(msg);
                 string respMsg = await response.Content.ReadAsStringAsync();
@@ -299,7 +303,7 @@ namespace WePayTest
                 
                 content["fee_amount"] = CalculateFees(payment.Amount * 100);
                 content["payment_method"]["payment_method_id"] = payment.PaymentMethodId;
-
+                AddRbitInfo(content);
                 msg.Content = new StringContent(content.ToString(), Encoding.UTF8, "application/json");
 
                 HttpResponseMessage response = await m_wePayHttpClient.SendAsync(msg);
@@ -311,7 +315,7 @@ namespace WePayTest
                 else if (IsRetryRequired(responseContent, response.StatusCode))
                 {
                     //launch retry
-                    HostingEnvironment.QueueBackgroundWorkItem((cancellationToken) => RetryRequest(msg));
+                    HostingEnvironment.QueueBackgroundWorkItem((cancellationToken) => RetryRequest(payment.UniqueKey, content));
                 }
                 else
                 {
@@ -359,13 +363,13 @@ namespace WePayTest
                 content["account_id"] = payment.AccountId;
                 content["amount"] = payment.Amount * 100;
                 content["currency"] = payment.Currency;
-                content["credit_card"]["card_holder"]["holder_name"] = payment.CustomerName;
-                content["credit_card"]["card_holder"]["email"] = payment.EmailAddress;
-                content["credit_card"]["card_holder"]["address"]["country"] = payment.Country;
-                content["credit_card"]["card_holder"]["address"]["postal_code"] = payment.PostalCode;
+                content["payment_method"]["credit_card"]["card_holder"]["holder_name"] = payment.CustomerName;
+                content["payment_method"]["credit_card"]["card_holder"]["email"] = payment.EmailAddress;
+                content["payment_method"]["credit_card"]["card_holder"]["address"]["country"] = payment.Country;
+                content["payment_method"]["credit_card"]["card_holder"]["address"]["postal_code"] = payment.PostalCode;
                 content["fee_amount"] = CalculateFees(payment.Amount * 100);
-                content["token"]["id"] = payment.Token;
-               
+                content["payment_method"]["token"]["id"] = payment.Token;
+                AddRbitInfo(content);
                 msg.Content = new StringContent(content.ToString(),Encoding.UTF8,"application/json");
 
                 HttpResponseMessage response = await m_wePayHttpClient.SendAsync(msg);
@@ -377,7 +381,7 @@ namespace WePayTest
                 else if (IsRetryRequired(responseContent, response.StatusCode))
                 {
                     //launch retry
-                    HostingEnvironment.QueueBackgroundWorkItem((cancellationToken) => RetryRequest(msg));
+                    HostingEnvironment.QueueBackgroundWorkItem((cancellationToken) => RetryRequest(payment.UniqueKey, content));
                 }
                 else
                 {
@@ -395,6 +399,49 @@ namespace WePayTest
             return status;
         }
          
+
+        private static void AddRbitInfo(JObject data)
+        {
+            long receiveTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            string source = "partner_database";
+            JArray rbitArray = new JArray();
+
+            //add partner_Service
+            JObject partnerService = new JObject(new JProperty("receive_time", receiveTime),
+                                                new JProperty("type", "partner_service"),
+                                                new JProperty("source", source));
+            partnerService["partner_service"] = new JObject(new JProperty("service_monthly_cost", 50),
+                                                             new JProperty("service_name", "telehealth"));
+            rbitArray.Add(partnerService);
+
+            //add external account
+            JObject externalAccount = new JObject(new JProperty("receive_time", receiveTime),
+                                                new JProperty("type", "external_account"),
+                                                new JProperty("source", source));
+            externalAccount["external_account"] = new JObject(new JProperty("create_time", DateTime.UtcNow.AddDays(-3)));
+            rbitArray.Add(externalAccount);
+
+            //add phone
+            JObject phone = new JObject(new JProperty("receive_time", receiveTime),
+                                    new JProperty("type", "phone"),
+                                    new JProperty("source", source));
+            externalAccount["phone"] = new JObject(new JProperty("phone_number","7192223456"), new JProperty("country_code", "1"));
+            rbitArray.Add(phone);
+
+            //add address
+            JObject address = new JObject(new JProperty("receive_time", receiveTime),
+                                    new JProperty("type", "address"),
+                                    new JProperty("source", source));
+            //externalAccount["address"] = new JObject(new JProperty("origin_address", new JObject("postal_code","76789")));
+            externalAccount["address"]["origin_address"]["postal_code"] = "76789";
+            rbitArray.Add(address);
+
+
+
+
+            data["rbits"] = rbitArray;
+        }
+
         private static bool IsRetryRequired(string errorResponse, HttpStatusCode statusCode)
         {
             if (statusCode == HttpStatusCode.InternalServerError || statusCode ==  HttpStatusCode.Conflict )
@@ -413,15 +460,19 @@ namespace WePayTest
         private static string GetErrorMessage(string errorResponse) => JObject.Parse(errorResponse)["error_message"]?.ToString();
 
         //maybe move code to a worker? Need to find ideal way to spawn this.
-        private static void RetryRequest(HttpRequestMessage requestMessage)
+        private static async Task RetryRequest(string uniqueKey, JObject data)
         {
             HttpStatusCode statusCode  = HttpStatusCode.InternalServerError;
             int i = 0;
+            HttpResponseMessage response = null;
+            //todo: ideally the requests should be retried for 24 hours from the initial request. Not sure if that is too much load on the server
+            //will have to consider it.
             while (statusCode != HttpStatusCode.OK && i++ < m_retryIntervals.Length)
             {
                 Thread.Sleep(m_retryIntervals[i] * 1000);
 
-                HttpResponseMessage response  = m_wePayHttpClient.SendAsync(CloneMessage(requestMessage).Result).Result;
+                response  = await m_wePayHttpClient.SendAsync(ClonePaymentRequestMessage(uniqueKey, data));
+                statusCode = response.StatusCode;
                 if (response.IsSuccessStatusCode)
                 {
                     //log success
@@ -431,6 +482,12 @@ namespace WePayTest
                 {
                     string responseContent = response.Content.ReadAsStringAsync().Result;
                 }
+            }
+            if (statusCode != HttpStatusCode.OK && i == m_retryIntervals.Length)
+            {
+                //log retries failed
+                string correlatonID = response.Headers.GetValues("X-Correlation-Id").FirstOrDefault();
+                //log this.
             }
            
         }
@@ -451,18 +508,12 @@ namespace WePayTest
 
         }
 
-        private static async Task<HttpRequestMessage> CloneMessage(HttpRequestMessage msg)
+        private static HttpRequestMessage ClonePaymentRequestMessage(string uniqueKey, JObject data)
         {
-            HttpRequestMessage newMessage = GetDefaultRequestMessageWithHeaders(msg.Method, msg.RequestUri.AbsolutePath);
-            if (msg.Headers.Contains("Unique-Key"))
-                newMessage.Headers.Add("Unique-Key", msg.Headers.GetValues("Unique-Key").First());
-            var ms = new MemoryStream();
-            if (msg.Content != null)
-            {
-                await msg.Content.CopyToAsync(ms);
-                ms.Position = 0;
-                newMessage.Content = new StreamContent(ms);
-            }
+            HttpRequestMessage newMessage = GetDefaultRequestMessageWithHeaders(HttpMethod.Post, "/payments");
+            if (!string.IsNullOrWhiteSpace(uniqueKey))
+                newMessage.Headers.Add("Unique-Key", uniqueKey);
+            newMessage.Content = new StringContent(data.ToString(), Encoding.UTF8, "application/json");
             return newMessage;
 
         }
