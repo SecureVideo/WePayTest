@@ -27,6 +27,10 @@ namespace WePayTest
         private static readonly string m_appID = string.Empty;
         private static readonly string m_version = string.Empty;
         private static readonly int[] m_retryIntervals = new Int32[] {5,30,75,240,720,1800, 1800, 1800, 1800, 1800};
+        
+        private static readonly string[] m_notfications= new string[] {"accounts.capabilities.updated", "disputes.created",
+                                                                       "disputes.resolved", "legal_entities.verifications.updated",
+                                                                        "payments.canceled", "payments.failed","payouts.failed","refunds.created","payments.completed"}; 
         static WePayBL()
         {
             m_wePayHttpClient = new HttpClient();
@@ -37,6 +41,10 @@ namespace WePayTest
             //based on this article http://byterot.blogspot.com/2016/07/singleton-httpclient-dns.html and
             //https://github.com/dotnet/aspnetcore/issues/28385#issuecomment-853766480
             ServicePointManager.FindServicePoint(m_wePayHttpClient.BaseAddress).ConnectionLeaseTimeout = 60000;
+            //is this the right way?
+            //HostingEnvironment.QueueBackgroundWorkItem((token) => SubscribeToNotifications());
+            //bool result = SubscribeToNotifications().Result;
+
         }
 
         public static async Task<WePayReturnStatus> OnBoardMerchant(WePayMerchantOnBoardModel merchantData)
@@ -275,6 +283,8 @@ namespace WePayTest
 
         public static async Task<WePayReturnStatus> MakePaymentUsingPaymentMethod(WePayPaymentModel payment)
         {
+            await SubscribeToNotifications();
+
 
             WePayReturnStatus status = new WePayReturnStatus() { IsSuccess = false };
             try
@@ -514,6 +524,48 @@ namespace WePayTest
                 //log this.
             }
            
+        }
+
+        private static async Task<bool> SubscribeToNotifications()
+        {
+            try
+            {
+
+                var request = GetDefaultRequestMessageWithHeaders(HttpMethod.Get, "/notification_preferences?page_size=10&status=active");
+                var response = await m_wePayHttpClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    string msg = GetErrorMessage(await response.Content.ReadAsStringAsync());
+                    return false;
+                }
+                var data = JObject.Parse(await response.Content.ReadAsStringAsync());
+                
+                foreach(string notification in m_notfications)
+                {
+                    if (data["results"] != null  && 
+                        data["results"].Any(result => result["topic"].ToString() == notification))
+                    {
+                        continue;
+                    }
+                    //register notifications
+                    request = GetDefaultRequestMessageWithHeaders(HttpMethod.Post, "/notification_preferences");
+                    JObject json = new JObject(new JProperty("callback_uri", "https://eoch9m2jwdh4pt5.m.pipedream.net"), 
+                                                new JProperty("topic", notification));
+                    request.Content = new StringContent(json.ToString(), Encoding.UTF8, "application/json");
+
+                    response = await m_wePayHttpClient.SendAsync(request);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        string msg = GetErrorMessage(await response.Content.ReadAsStringAsync());
+                        return false;
+                    }
+                }
+            }
+            catch(Exception exc)
+            {
+                //log
+            }
+            return true;
         }
 
         private static int CalculateFees(int amount)
