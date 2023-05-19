@@ -1,5 +1,6 @@
 ﻿using Newtonsoft.Json.Linq;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -87,12 +88,14 @@ namespace WePayTest
                 data["name"] = merchantData.AccountName;
                 data["description"] = merchantData.AccountDescription;
                 data["industry"]["merchant_category_code"] = merchantData.MerchantCategoryCode;
+                AddAccountLevelRbitInfo(data);
                 msg.Content = new StringContent(data.ToString(), Encoding.UTF8, "application/json");
 
                 response = await m_wePayHttpClient.SendAsync(msg);
                 if (!response.IsSuccessStatusCode)
                 {
-                    status.StatusMsg = GetErrorMessage(await response.Content.ReadAsStringAsync());
+                    string responseMsg = await response.Content.ReadAsStringAsync();
+                    status.StatusMsg = GetErrorMessage(responseMsg);
                     //log StatusMsg.
                     return status;
                 }
@@ -303,7 +306,7 @@ namespace WePayTest
                 
                 content["fee_amount"] = CalculateFees(payment.Amount * 100);
                 content["payment_method"]["payment_method_id"] = payment.PaymentMethodId;
-                AddRbitInfo(content);
+                AddPaymentLevelRbitInfo(content);
                 msg.Content = new StringContent(content.ToString(), Encoding.UTF8, "application/json");
 
                 HttpResponseMessage response = await m_wePayHttpClient.SendAsync(msg);
@@ -369,7 +372,7 @@ namespace WePayTest
                 content["payment_method"]["credit_card"]["card_holder"]["address"]["postal_code"] = payment.PostalCode;
                 content["fee_amount"] = CalculateFees(payment.Amount * 100);
                 content["payment_method"]["token"]["id"] = payment.Token;
-                AddRbitInfo(content);
+                AddPaymentLevelRbitInfo(content);
                 msg.Content = new StringContent(content.ToString(),Encoding.UTF8,"application/json");
 
                 HttpResponseMessage response = await m_wePayHttpClient.SendAsync(msg);
@@ -398,9 +401,45 @@ namespace WePayTest
 
             return status;
         }
-         
 
-        private static void AddRbitInfo(JObject data)
+        private static void AddPaymentLevelRbitInfo(JObject data)
+        {
+            long receiveTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            //may want to check on this.
+            string source = "partner_database";
+            JArray rbitArray = new JArray();
+            //add phone
+            JObject phone = new JObject(new JProperty("receive_time", receiveTime),
+                                    new JProperty("type", "phone"),
+                                    new JProperty("source", source));
+            phone["phone"] = new JObject(new JProperty("phone_number", "7192223456"), new JProperty("country_code", "1"));
+            rbitArray.Add(phone);
+
+            //add address
+            JObject address = new JObject(new JProperty("receive_time", receiveTime),
+                                    new JProperty("type", "address"),
+                                    new JProperty("source", source));
+            //origin_address is a nested object
+            address["address"] = new JObject(new JProperty("origin_address", new JObject(new JProperty("postal_code", "76789"))));
+            rbitArray.Add(address);
+
+            //add itemized receipt
+            JObject transactionDetails = new JObject(new JProperty("receive_time", receiveTime),
+                                    new JProperty("type", "transaction_details"),
+                                    new JProperty("source", source));
+            JObject itemizedReceipt = new JObject(new JProperty("item_price", 50),
+                                                    new JProperty("quantity", 1),
+                                                    new JProperty("description", "Telehealth service"),
+                                                    new JProperty("amount", 50));
+            //itemized_receipt is a nested object that contains an array of objects
+            transactionDetails["transaction_details"] = new JObject(new JProperty("itemized_receipt", new JArray(itemizedReceipt)));
+            rbitArray.Add(transactionDetails);
+            
+            data["rbits"] = rbitArray;
+
+        }
+
+        private static void AddAccountLevelRbitInfo(JObject data)
         {
             long receiveTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             string source = "partner_database";
@@ -418,27 +457,12 @@ namespace WePayTest
             JObject externalAccount = new JObject(new JProperty("receive_time", receiveTime),
                                                 new JProperty("type", "external_account"),
                                                 new JProperty("source", source));
-            externalAccount["external_account"] = new JObject(new JProperty("create_time", DateTime.UtcNow.AddDays(-3)));
-            rbitArray.Add(externalAccount);
-
-            //add phone
-            JObject phone = new JObject(new JProperty("receive_time", receiveTime),
-                                    new JProperty("type", "phone"),
-                                    new JProperty("source", source));
-            externalAccount["phone"] = new JObject(new JProperty("phone_number","7192223456"), new JProperty("country_code", "1"));
-            rbitArray.Add(phone);
-
-            //add address
-            JObject address = new JObject(new JProperty("receive_time", receiveTime),
-                                    new JProperty("type", "address"),
-                                    new JProperty("source", source));
-            //externalAccount["address"] = new JObject(new JProperty("origin_address", new JObject("postal_code","76789")));
-            externalAccount["address"]["origin_address"]["postal_code"] = "76789";
-            rbitArray.Add(address);
-
-
-
-
+            //question is_partner_account (should be true?) If its false, then account_type must be added(Name of the provider of the account.?)
+            //not sure on this.
+            externalAccount["external_account"] = new JObject(new JProperty("create_time", DateTimeOffset.UtcNow.AddDays(-3).ToUnixTimeSeconds()), 
+                                                  new JProperty("is_partner_account", true),
+                                                  new JProperty("account_type", ""));
+            rbitArray.Add(externalAccount);         
             data["rbits"] = rbitArray;
         }
 

@@ -39,7 +39,7 @@ namespace WePayTest.Controllers
             {
                 AccountName = "Live Celly Account",
                 AccountDescription = "From the controoler",
-                ControllerEmail = "cellysumit@hotmail.com",
+                ControllerEmail = "cellysumit45@hotmail.com",
                 Country = "US",
                 MerchantCategoryCode = "8011",
             };
