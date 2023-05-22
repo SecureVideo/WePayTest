@@ -30,7 +30,7 @@ namespace WePayTest
         
         private static readonly string[] m_notfications= new string[] {"accounts.capabilities.updated", "disputes.created",
                                                                        "disputes.resolved", "legal_entities.verifications.updated",
-                                                                        "payments.canceled", "payments.failed","payouts.failed","refunds.created","payments.completed"}; 
+                                                                        "payments.canceled", "payments.failed","payouts.failed","refunds.created"}; 
         static WePayBL()
         {
             m_wePayHttpClient = new HttpClient();
