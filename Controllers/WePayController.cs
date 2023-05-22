@@ -49,6 +49,13 @@ namespace WePayTest.Controllers
             return Content(returnStatus.StatusMsg);
         }
 
+        public async Task<ActionResult> DeleteSavedPaymentMethod(string id)
+        {
+            WePayReturnStatus returnStatus = await WePayBL.DeletePaymentMethod("00000000-6363-0000-0000-0048f2e2a88c");
+
+            return Content(returnStatus.StatusMsg);
+        }
+
         public async Task<ActionResult> SaveCC(WePayPaymentModel data)
         {
             data.CustomerName = "test guy1";

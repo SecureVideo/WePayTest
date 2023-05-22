@@ -214,6 +214,48 @@ namespace WePayTest
 
             return status;
         }
+
+        public static async Task<WePayReturnStatus> DeleteAccount(string accountId)
+        {
+            var status = new WePayReturnStatus() { IsSuccess = false };
+            if (String.IsNullOrWhiteSpace(accountId))
+            {
+                return new WePayReturnStatus() { StatusMsg = "Empty account Id sent for delete" };
+            }
+            try
+            {
+                var request = GetDefaultRequestMessageWithHeaders(HttpMethod.Delete, $"/accounts/{accountId}");
+                var response = await m_wePayHttpClient.SendAsync(request);
+                status.IsSuccess = response.IsSuccessStatusCode;
+                status.StatusMsg = GetErrorMessage(await response.Content.ReadAsStringAsync());
+            }
+            catch (Exception exc)
+            {
+                status.StatusMsg = exc.Message;
+            }
+            return status;
+        }
+
+        public static async  Task<WePayReturnStatus> DeletePaymentMethod(string paymentId)
+        {
+            var status = new WePayReturnStatus() { IsSuccess = false };
+            if (String.IsNullOrWhiteSpace(paymentId))
+            {
+                return new WePayReturnStatus() { StatusMsg = "Empty payment method sent for delete" };
+            }
+            try
+            {
+                var request = GetDefaultRequestMessageWithHeaders(HttpMethod.Delete, $"/payment_methods/{paymentId}");
+                var response = await m_wePayHttpClient.SendAsync(request);
+                status.IsSuccess = response.IsSuccessStatusCode;
+                status.StatusMsg = GetErrorMessage(await response.Content.ReadAsStringAsync());
+            }
+            catch(Exception exc)
+            {
+                status.StatusMsg = exc.Message;
+            }
+            return status;
+        }
         public static async Task<WePayReturnStatus> SaveCreditCard(WePayPaymentModel payment)
         {
             WePayReturnStatus status = new WePayReturnStatus() { IsSuccess = false };
