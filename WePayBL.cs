@@ -44,7 +44,7 @@ namespace WePayTest
             //is this the right way?
             //HostingEnvironment.QueueBackgroundWorkItem((token) => SubscribeToNotifications());
             //bool result = SubscribeToNotifications().Result;
-
+            _ = SubscribeToNotifications();
         }
 
         public static async Task<WePayReturnStatus> OnBoardMerchant(WePayMerchantOnBoardModel merchantData)
@@ -325,7 +325,7 @@ namespace WePayTest
 
         public static async Task<WePayReturnStatus> MakePaymentUsingPaymentMethod(WePayPaymentModel payment)
         {
-            await SubscribeToNotifications();
+            //await SubscribeToNotifications();
 
 
             WePayReturnStatus status = new WePayReturnStatus() { IsSuccess = false };
@@ -399,6 +399,7 @@ namespace WePayTest
                 auto_capture: true,
                 currency: 'USD',
                 fee_amount: 0,
+                initiated_by: 'customer',
                 payment_method: {
                     token: {
                         id: 'test'
@@ -574,7 +575,7 @@ namespace WePayTest
             {
 
                 var request = GetDefaultRequestMessageWithHeaders(HttpMethod.Get, "/notification_preferences?page_size=10&status=active");
-                var response = await m_wePayHttpClient.SendAsync(request);
+                var response = m_wePayHttpClient.SendAsync(request).Result;
                 if (!response.IsSuccessStatusCode)
                 {
                     string msg = GetErrorMessage(await response.Content.ReadAsStringAsync());
@@ -595,7 +596,7 @@ namespace WePayTest
                                                 new JProperty("topic", notification));
                     request.Content = new StringContent(json.ToString(), Encoding.UTF8, "application/json");
 
-                    response = await m_wePayHttpClient.SendAsync(request);
+                    response = m_wePayHttpClient.SendAsync(request).Result;
                     if (!response.IsSuccessStatusCode)
                     {
                         string msg = GetErrorMessage(await response.Content.ReadAsStringAsync());

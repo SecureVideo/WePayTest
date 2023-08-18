@@ -1,10 +1,15 @@
-﻿using Newtonsoft.Json.Linq;
+﻿using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Security.Policy;
 using System.Text;
 using System.Threading.Tasks;
 using System.Web;
@@ -12,6 +17,7 @@ using System.Web.Mvc;
 using System.Web.UI.WebControls;
 using System.Web.WebSockets;
 using WePayTest.Models;
+using ActionResult = System.Web.Mvc.ActionResult;
 
 namespace WePayTest.Controllers
 {
@@ -21,7 +27,7 @@ namespace WePayTest.Controllers
 
         
 
-      
+   
         public ActionResult Index()
         {
             return View(new WePayTest.Models.WePayPaymentModel() { AppId= "332832" });
@@ -91,7 +97,7 @@ namespace WePayTest.Controllers
             data.Country = "US";
            
 
-            data.PaymentMethodId = "00000000-6363-0000-0000-0011f2da12db";
+            data.PaymentMethodId = "00000000-6363-0000-0000-003411088f14";
             var status = await WePayBL.MakePaymentUsingPaymentMethod(data);
 
             return Content(status.StatusMsg);
@@ -117,6 +123,96 @@ namespace WePayTest.Controllers
             return Content(status.StatusMsg);
            }
 
+        [AllowAnonymous]
+        public  Microsoft.AspNetCore.Mvc.ActionResult Update(ZoomWebhookPayload zoomData)
+        { 
+        //{
+        //    string encryptedToken = EncryptionUtils.ToHex(EncryptionUtils.HashHMAC("rT8Te39iQFeUEw_tvgbaaA", zoomData.payload.plainToken));
+        //    //return Ok(
+        //    //    new ZoomReturnResult() { encryptedToken = encryptedToken, plainToken = zoomData.payload.plainToken }
+        //    //); ;
+        //    var retData = new { encryptedToken = encryptedToken, plainToken = zoomData.payload.plainToken };
+        //    return new OkObjectResult(new { encryptedToken = encryptedToken, plainToken = zoomData.payload.plainToken });
+
+             string hashed = "";
+        string requestBody = String.Empty;
+       // 
+
+            using (Stream req = Request.InputStream)
+            {
+                req.Seek(0, System.IO.SeekOrigin.Begin);
+                requestBody = new StreamReader(req).ReadToEnd();
+            }
+            var data = JsonConvert.DeserializeObject<ZoomWebhookPayload>(requestBody);
+            if (!(string.IsNullOrEmpty(data.Event)) && data.Event == "endpoint.url_validation")
+            {
+                var encoding = new System.Text.ASCIIEncoding();
+                var sha256 = new System.Security.Cryptography.HMACSHA256();
+                sha256.Key = encoding.GetBytes("rT8Te39iQFeUEw_tvgbaaA");
+                var hash = sha256.ComputeHash(encoding.GetBytes(data.payload.plainToken));
+                hashed = ToHex(hash, false);
+            }
+            return new OkObjectResult(new
+            {
+                plainToken = data.payload.plainToken,
+                encryptedToken = hashed
+             });
+        }
+
+        private static string ToHex(byte[] bytes, bool upperCase)
+        {
+            StringBuilder result = new StringBuilder(bytes.Length * 2);
+            for (int i = 0; i < bytes.Length; i++)
+                result.Append(bytes[i].ToString(upperCase ? "X2" : "x2"));
+            return result.ToString();
+        }
+
+        public class ZoomWebhookPayload
+        {
+            public ZoomWebhookEventPayload payload { get; set; }
+            public string Event { get; set; }
+        }
+
+        public class ZoomWebhookEventPayload
+        {
+            public string plainToken { get; set; }
+
+        }
+        //public class ZoomWebhook
+        //{
+        //    public string @event { get; set; }
+        //    public ZoomWebhookPayload payload { get; set; }
+        //    public string download_token { get; set; }      // Used for recording_completed event
+
+        //    public override string ToString()
+        //    {
+        //        return JsonConvert.SerializeObject(this);
+        //    }
+        //}
+        //public class ZoomWebhookPayload
+        //{
+        //    public string account_id { get; set; }
+
+        //    public string plainToken { get; set; }
+            
+        //}
+        public static class EncryptionUtils
+        {
+            public static byte[] HashHMAC(string key, string message)
+            {
+                var hash = new HMACSHA256(Encoding.UTF8.GetBytes(key));
+                return hash.ComputeHash(Encoding.UTF8.GetBytes(message));
+                //return BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(message))).Replace("-",String.Empty).ToLower();
+            }
+
+            public static string ToHex(byte[] bytes, bool upperCase = false)
+            {
+                StringBuilder result = new StringBuilder(bytes.Length * 2);
+                for (int i = 0; i < bytes.Length; i++)
+                    result.Append(bytes[i].ToString(upperCase ? "X2" : "x2"));
+                return result.ToString();
+            }
+        }
         private JObject GetContent(string token)
         {
             JObject data = JObject.Parse(@"{
