@@ -3,9 +3,10 @@ version: 0.2
 env:
   variables:
     PROJECT: WePayTest
-    DOTNET_FRAMEWORK: 4.7.2
+    DOTNET_FRAMEWORK: 4.8.0
 phases:
   build:
+    
     commands:
       - nuget restore
       - msbuild $env:PROJECT.csproj /p:TargetFrameworkVersion=v$env:DOTNET_FRAMEWORK /p:Configuration=Release /p:DeployIisAppPath="Default Web Site" /p:PackageAsSingleFile=false /p:OutDir=C:\codebuild\artifacts\ /t:Package
