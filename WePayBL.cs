@@ -26,6 +26,7 @@ namespace WePayTest
         private static readonly string m_apiToken = string.Empty;
         private static readonly string m_appID = string.Empty;
         private static readonly string m_version = string.Empty;
+
         private static readonly int[] m_retryIntervals = new Int32[] {5,30,75,240,720,1800, 1800, 1800, 1800, 1800};
         
         private static readonly string[] m_notfications= new string[] {"accounts.capabilities.updated", "disputes.created",
