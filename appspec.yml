@@ -3,5 +3,3 @@ os: windows
 files:
   - source: \
     destination: C:\WePayTest
-  - source: ..\AppTest2
-    destination: C:\AppTest2
