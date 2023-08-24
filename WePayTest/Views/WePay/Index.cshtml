@@ -1,0 +1,197 @@
+﻿@model WePayTest.Models.WePayPaymentModel
+@{
+    ViewBag.Title = "WePay";
+}
+
+<h2>WePay</h2>
+@Html.Label("App ID")
+@Html.TextBox("AppIDName", Model.AppId)
+
+
+<div id="credit-card-iframe"></div>
+<input type="button" id="SendPayment" value="Submit Direct Payment" />
+<input type="button" id="SaveCC" value="Save CC" />
+
+@Html.TextBox("uniqueKey", "Test123")
+<div id="token"></div>
+<div id="paymentResponse"></div>
+@section Scripts {
+    <script type="text/javascript" src="https://cdn.wepay.com/wepay.min.js"></script>
+
+
+    <script>
+        let creditCard = null;
+        let myAppId = null, myAPIKey = null, apiVersion = null;
+        $(document).ready(function () {
+            myAppId = "@Model.AppId";
+          
+            //console.log("@Model.AppId");
+            apiVersion = "3.0";
+            var error = WePay.configure("stage", myAppId, apiVersion);
+            if (error) {
+            // An error is returned if any fields are missing or invalid.
+                console.log(error);
+            }
+            let custom_style = {
+                'styles': {
+                    'base': {
+                        'color': 'blue'
+                    },
+                    'invalid': {
+                        'color': 'red'
+                    },
+                    'valid': {
+                        'color': 'green'
+                    },
+                    'labels': {
+                        'base': {
+                            'color': 'gray'
+                        }
+                    }
+                }
+            }
+
+            let options = {
+                custom_style: custom_style,
+                show_labels: true,
+                show_placeholders: true,
+                show_error_messages: true,
+                show_error_messages_when_unfocused: true,
+                show_error_icon: true,
+                show_required_asterisk: false,
+                resize_on_error_message: false,
+                custom_required_field_error_message: 'SV error',
+                use_one_liner: false
+            };
+
+            let iframe_container_id = "credit-card-iframe";
+            creditCard = WePay.createCreditCardIframe(iframe_container_id, options)
+        });
+
+        $("#SaveCC").click(function () {
+            creditCard.tokenize()
+                .then(function (response) {
+                    console.log('response', response);
+
+                    $.ajax({
+
+                        url: '/WePay/SaveCC',
+                        type: 'POST',
+                        data: {
+                            Token: response.id
+                            //UniqueKey: $("#uniqueKey").val()
+                        },
+                        dataType: 'json',
+                        success: function (data) {
+                            $("#paymentResponse").text(JSON.stringify(data));
+                        },
+                        error: function (request, error) {
+                            // alert("Request: " + JSON.stringify(request));
+                            $("#paymentResponse").text(JSON.stringify(request));
+                        }
+                    });
+                })
+                .catch(function (error) {
+                    console.log('error', error);
+                    var node = document.createElement('div');
+                    node.innerHTML = JSON.stringify(error);
+                    document.getElementById('token').appendChild(node);
+                });
+
+
+        });
+        $("#SendPayment").click(function () {
+            creditCard.tokenize()
+                .then(function (response) {
+                    console.log('response', response);
+                    //var node = document.getElementById('token');
+                    //node.innerHTML = JSON.stringify(response);
+
+                    //uncomment this and comment the ajax call to see the  cors error
+                    //makePayment(response.id);
+                    
+                    $.ajax({
+
+                        url: '/WePay/MakePayment',
+                        type: 'POST',
+                        data: {
+                            Token: response.id
+                            //UniqueKey: $("#uniqueKey").val()
+                        },
+                        dataType: 'json',
+                        success: function (data) {
+                            $("#paymentResponse").text(JSON.stringify(data));
+                        },
+                        error: function (request, error) {
+                           // alert("Request: " + JSON.stringify(request));
+                            $("#paymentResponse").text(JSON.stringify(request));
+                        }
+                    });
+                })
+                .catch(function (error) {
+                    console.log('error', error);
+                    var node = document.createElement('div');
+                    node.innerHTML = JSON.stringify(error);
+                    document.getElementById('token').appendChild(node);
+                });
+
+
+        });
+
+        async function makePayment(token) {
+            if (!token) {
+                return "Invalid token received";
+            }
+            let paymentBody = JSON.stringify({
+                account_id: 'c1f1ba8a-dfd9-4c54-b72a-58f833645e2b',
+                amount: 20,
+                auto_capture: true,
+                currency: 'USD',
+                fee_amount: 3,
+                payment_method: {
+                    token: {
+                        id: token
+                    },
+                    credit_card: {
+                        card_holder: {
+                            holder_name: 'Test Test',
+                            email: 'foo@bar.com',
+                            address: {
+                                country: 'US',
+                                postal_code: '94025'
+                            }
+                        }
+                    }
+                }
+            });
+            console.log(paymentBody);
+            //this does not work because we get a cors error.
+            //essentially the server does not return any origins in the Access Control Allow Origin response header (the header does not exist)
+            // And the browser seeing that there is no url allowed, throws the error.
+            //Hence we cannot make direct browser based requests to the api(other than the main reason of securing api keys)
+            //https://www.baeldung.com/cs/cors-preflight-requests
+            const resp = await fetch(
+                'https://stage-api.wepay.com/payments',
+                {
+                    method: 'POST',
+
+                    headers: {
+                        'Api-Version': apiVersion,
+                        'Content-Type': 'application/json',
+                        'Unique-Key': 'celly1',
+                        'WePay-Risk-Token': 'string',
+                        'Client-IP': 'string',
+                        'App-Id': myAppId,
+                        'App-Token': myAPIKey
+                    },
+                    body: paymentBody
+                }
+            );
+
+            const data = await resp.json();
+            console.log(data);
+            document.getElementById("paymentResponse").innerHTML = data;
+        }
+    </script>
+
+}
