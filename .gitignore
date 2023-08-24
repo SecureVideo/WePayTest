@@ -37,3 +37,7 @@ Ankh.NoLoad
 aspnet_client
 
 TestApp2/bin/TestApp2.pdb
+
+TestApp2/bin/Microsoft.CodeDom.Providers.DotNetCompilerPlatform.xml
+
+TestApp2/bin/TestApp2.dll.config
