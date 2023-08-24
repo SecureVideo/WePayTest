@@ -1,7 +1,0 @@
-version: 0.0
-os: windows
-files:
-  - source: \
-    destination: C:\WePayTest
-  - source: ..\AppTest2
-    destination: C:\AppTest2
